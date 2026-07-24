@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@theme {
+  --color-eco-green: #2ecc71;
+  --color-eco-green-dark: #27ae60;
+  --color-eco-amber: #f39c12;
+  --color-eco-amber-light: #f1c40f;
+  --color-eco-blue: #3498db;
+  --color-eco-red: #e74c3c;
+  --color-eco-bg: #f8f9fa;
+  --color-eco-surface: #ffffff;
+  --color-eco-text: #2c3e50;
+  --color-eco-text-light: #7f8c8d;
+}
+
+body {
+  background-color: var(--color-eco-bg);
+  color: var(--color-eco-text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Base styles for PWA mobile app feel */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
