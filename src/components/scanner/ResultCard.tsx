@@ -89,8 +89,16 @@ export default function ResultCard({ result, imageSrc, onClose }: ResultCardProp
       <div className="px-6 pt-12 pb-6 flex flex-col gap-6">
         <div className="text-center mb-2">
           <h2 className="text-3xl font-extrabold text-eco-text mb-2">{result.label}</h2>
-          <div className={cn("inline-block px-4 py-1 rounded-full text-sm font-bold shadow-sm mb-4", getCategoryColor(result.category))}>
+          <div className={cn("inline-block px-4 py-1 rounded-full text-sm font-bold shadow-sm mb-3", getCategoryColor(result.category))}>
             Kategori: {result.category}
+          </div>
+          <div>
+            <button 
+              onClick={onClose}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-1.5 bg-red-50 hover:bg-red-100 text-red-500 rounded-full font-medium text-xs transition-all active:scale-95 border border-red-100"
+            >
+              <X className="w-3.5 h-3.5" /> AI Salah Tebak? Scan Ulang
+            </button>
           </div>
         </div>
 
@@ -166,13 +174,6 @@ export default function ResultCard({ result, imageSrc, onClose }: ResultCardProp
             className="w-full bg-eco-text hover:bg-black text-white rounded-2xl py-4 font-bold text-lg transition-all active:scale-95"
           >
             Scan Lagi
-          </button>
-          
-          <button 
-            onClick={onClose}
-            className="w-full bg-red-50 hover:bg-red-100 text-red-500 rounded-2xl py-3 font-medium text-sm transition-all active:scale-95 flex items-center justify-center gap-2"
-          >
-            <X className="w-4 h-4" /> AI Salah Tebak? Scan Ulang
           </button>
         </div>
       </div>
