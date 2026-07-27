@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Leaf, Info, DollarSign, X, Bot, Sparkles } from 'lucide-react';
 import type { AIResult } from '../../services/aiService';
 import { cn } from '../../utils/cn';
@@ -11,6 +11,30 @@ interface ResultCardProps {
 }
 
 export default function ResultCard({ result, imageSrc, onClose }: ResultCardProps) {
+  const [showFeedback, setShowFeedback] = useState(false);
+
+  useEffect(() => {
+    // Tampilkan popup feedback setelah 4 detik, hanya jika belum pernah melihatnya
+    const hasSeen = localStorage.getItem('pasuruhan_feedback_seen');
+    if (!hasSeen) {
+      const timer = setTimeout(() => {
+        setShowFeedback(true);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  const handleCloseFeedback = () => {
+    setShowFeedback(false);
+    localStorage.setItem('pasuruhan_feedback_seen', 'true');
+  };
+
+  const handleOpenFeedback = () => {
+    window.open('https://forms.gle/CWtqXSqbUrtHyr6W7', '_blank');
+    setShowFeedback(false);
+    localStorage.setItem('pasuruhan_feedback_seen', 'true');
+  };
+
   // RAG: Ambil data kamus lokal sekali
   const ragFacts = useMemo(() => retrieveTrashContext(result.label, result.category), [result]);
   // Buat Fakta Edukasi secara statis (tanpa AI) untuk menghemat token
@@ -190,6 +214,35 @@ export default function ResultCard({ result, imageSrc, onClose }: ResultCardProp
           </button>
         </div>
       </div>
+
+      {/* Pop-up Evaluasi */}
+      {showFeedback && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-300">
+            <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-500">
+              <Sparkles className="w-8 h-8" />
+            </div>
+            <h3 className="text-xl font-bold text-center text-eco-text mb-2">Bantu Kami Lebih Baik 🌱</h3>
+            <p className="text-center text-eco-text-light text-sm mb-6 leading-relaxed">
+              Halo! Bagaimana pengalaman Anda menggunakan aplikasi ini hari ini? Luangkan 1 menit untuk memberikan masukan agar AI kami semakin pintar!
+            </p>
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={handleOpenFeedback}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-md shadow-blue-500/20"
+              >
+                Tentu, Isi Survei
+              </button>
+              <button 
+                onClick={handleCloseFeedback}
+                className="w-full text-gray-500 hover:text-gray-800 font-medium py-3 rounded-xl transition-colors text-sm"
+              >
+                Nanti Saja
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
