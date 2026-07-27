@@ -1,4 +1,4 @@
-export type TrashCategory = "PLASTIK" | "KERTAS" | "ORGANIK" | "RESIDU" | "BUKAN_SAMPAH";
+export type TrashCategory = "PLASTIK" | "KERTAS" | "ORGANIK" | "RESIDU" | "BUKAN_SAMPAH" | "GAMBAR_BURAM";
 
 export interface AIResult {
   category: TrashCategory;
@@ -38,6 +38,12 @@ export const mockResults: Record<TrashCategory, Omit<AIResult, 'confidence' | 'c
     label: "Bukan Sampah",
     disposalGuide: "Tidak perlu dibuang!",
     ecoTip: "Tampaknya AI mendeteksi bahwa ini bukanlah sampah.",
+    ecoPoints: 0,
+  },
+  GAMBAR_BURAM: {
+    label: "Gambar Tidak Jelas",
+    disposalGuide: "Mohon foto ulang",
+    ecoTip: "Pastikan cahaya cukup terang dan kamera fokus pada sampah.",
     ecoPoints: 0,
   }
 };

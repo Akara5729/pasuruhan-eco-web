@@ -52,18 +52,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const systemPrompt = `You are a strict waste classification AI for Pasuruhan Kidul Village.
 Your ONLY job is to look at the image and classify it.
 RULES (follow exactly):
-1. If the image shows a human face, person, body parts, empty room, furniture, electronics in use, or ANY object that is clearly NOT waste/trash → respond with category "BUKAN_SAMPAH".
-2. If the image shows actual waste or trash, classify into ONE of: PLASTIK, KERTAS, ORGANIK, RESIDU.
+1. If the image is too blurry, too dark, a solid color, or you cannot clearly identify any object, respond with category "GAMBAR_BURAM".
+2. If the image shows a human face, person, body parts, empty room, furniture, electronics in use, or ANY object that is clearly NOT waste/trash → respond with category "BUKAN_SAMPAH".
+3. If the image shows actual waste or trash, classify into ONE of: PLASTIK, KERTAS, ORGANIK, RESIDU.
    - PLASTIK: plastic bottles, plastic bags, plastic cups, plastic packaging
    - KERTAS: cardboard boxes, paper, newspapers, cartons
    - ORGANIK: food scraps, leaves, fruit peels
    - RESIDU: batteries, mixed waste, diapers, broken glass, electronics waste
-3. Respond ONLY with valid JSON. No explanation. No markdown. Just JSON.`;
+4. Respond ONLY with valid JSON. No explanation. No markdown. Just JSON.`;
 
     const userMessage = `Classify this image. Respond with ONLY this JSON format:
 {"category": "PLASTIK", "label": "Botol Plastik"}
 
-Valid categories: PLASTIK, KERTAS, ORGANIK, RESIDU, BUKAN_SAMPAH`;
+Valid categories: PLASTIK, KERTAS, ORGANIK, RESIDU, BUKAN_SAMPAH, GAMBAR_BURAM`;
 
     // Gunakan format base64 data URL langsung (tanpa konversi ke array)
     const mimeTypeMatch = imageSrc.match(/^data:(image\/\w+);base64,/);
@@ -151,7 +152,7 @@ Valid categories: PLASTIK, KERTAS, ORGANIK, RESIDU, BUKAN_SAMPAH`;
 
       // Fallback Regex jika Cloudflare mengembalikan Markdown alih-alih JSON
       if (!parsedData || !parsedData.category) {
-        const catMatch = responseText.match(/\*\*(?:Category|Kategori):\*\*\s*([A-Za-z_]+)/i) || responseText.match(/category.*?(PLASTIK|KERTAS|ORGANIK|RESIDU|BUKAN_SAMPAH)/i);
+        const catMatch = responseText.match(/\*\*(?:Category|Kategori):\*\*\s*([A-Za-z_]+)/i) || responseText.match(/category.*?(PLASTIK|KERTAS|ORGANIK|RESIDU|BUKAN_SAMPAH|GAMBAR_BURAM)/i);
         const labelMatch = responseText.match(/\*\*(?:Label|Nama):\*\*\s*([^\n*]+)/i) || responseText.match(/label.*?([\w\s()]+)/i);
         
         if (catMatch) {

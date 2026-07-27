@@ -15,6 +15,13 @@ export default function ResultCard({ result, imageSrc, onClose }: ResultCardProp
   const ragFacts = useMemo(() => retrieveTrashContext(result.label, result.category), [result]);
   // Buat Fakta Edukasi secara statis (tanpa AI) untuk menghemat token
   const aiExplanation = useMemo(() => {
+    if (result.category === 'BUKAN_SAMPAH') {
+      return "Sistem kami mendeteksi objek ini bukan sampah. Mari kita jaga lingkungan dengan hanya memilah benda yang benar-benar merupakan sampah.";
+    }
+    if (result.category === 'GAMBAR_BURAM') {
+      return "Kamera kurang fokus atau pencahayaan kurang. AI butuh detail visual (tekstur, bentuk, label) untuk menganalisis sampah dengan benar. Yuk, coba foto ulang!";
+    }
+
     // Cek apakah sampah dikenali di dalam kamus lokal kita
     const isKnown = result.label !== "Tidak Dikenali" && ragFacts.namaResmi !== "Sampah Umum (Tidak Dikenali)";
     
@@ -31,6 +38,7 @@ export default function ResultCard({ result, imageSrc, onClose }: ResultCardProp
       case 'ORGANIK': return 'bg-eco-green text-white';
       case 'RESIDU': return 'bg-eco-red text-white';
       case 'BUKAN_SAMPAH': return 'bg-gray-800 text-white';
+      case 'GAMBAR_BURAM': return 'bg-orange-500 text-white';
       default: return 'bg-gray-500 text-white';
     }
   };
@@ -42,6 +50,7 @@ export default function ResultCard({ result, imageSrc, onClose }: ResultCardProp
       case 'ORGANIK': return 'border-eco-green';
       case 'RESIDU': return 'border-eco-red';
       case 'BUKAN_SAMPAH': return 'border-gray-800';
+      case 'GAMBAR_BURAM': return 'border-orange-500';
       default: return 'border-gray-500';
     }
   };
@@ -53,6 +62,7 @@ export default function ResultCard({ result, imageSrc, onClose }: ResultCardProp
       case 'ORGANIK': return 'text-eco-green';
       case 'RESIDU': return 'text-eco-red';
       case 'BUKAN_SAMPAH': return 'text-gray-800';
+      case 'GAMBAR_BURAM': return 'text-orange-500';
       default: return 'text-gray-500';
     }
   };
@@ -64,6 +74,7 @@ export default function ResultCard({ result, imageSrc, onClose }: ResultCardProp
       case 'ORGANIK': return 'bg-eco-green/20';
       case 'RESIDU': return 'bg-eco-red/20';
       case 'BUKAN_SAMPAH': return 'bg-gray-800/20';
+      case 'GAMBAR_BURAM': return 'bg-orange-500/20';
       default: return 'bg-gray-500/20';
     }
   };
@@ -160,13 +171,15 @@ export default function ResultCard({ result, imageSrc, onClose }: ResultCardProp
         )}
 
         {/* Chatbot Interface */}
-        <div className="mt-8 border-t border-gray-200 pt-8">
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-extrabold text-eco-text">Tanya Cloudflare AI</h2>
-            <p className="text-eco-text-light text-sm mt-1">Dapatkan ide kreatif daur ulang sampah ini!</p>
+        {(result.category !== 'BUKAN_SAMPAH' && result.category !== 'GAMBAR_BURAM') && (
+          <div className="mt-8 border-t border-gray-200 pt-8">
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-extrabold text-eco-text">Tanya Cloudflare AI</h2>
+              <p className="text-eco-text-light text-sm mt-1">Dapatkan ide kreatif daur ulang sampah ini!</p>
+            </div>
+            <ChatInterface result={result} />
           </div>
-          <ChatInterface result={result} />
-        </div>
+        )}
 
         <div className="flex flex-col gap-3 mt-4">
           <button 
