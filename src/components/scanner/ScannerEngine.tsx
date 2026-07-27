@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Camera, Image as ImageIcon, RotateCcw, Sparkles } from 'lucide-react';
+import { logToServer } from '../../services/remoteLogger';
 
 interface ScannerEngineProps {
   onAnalyze: (imageSrc: string) => void;
@@ -68,6 +69,7 @@ const preprocessCameraImage = (rawImageSrc: string): Promise<string> => {
       const imageData = ctx.getImageData(0, 0, TARGET_SIZE, TARGET_SIZE);
       ctx.putImageData(applyAutoContrast(imageData), 0, 0);
 
+      logToServer('INFO', `[ScannerEngine] Kamera: ROI crop (${srcSize}x${srcSize} dari ${img.width}x${img.height}) → ${TARGET_SIZE}x${TARGET_SIZE} + contrast`);
       console.log(`\x1b[36m[PREPROCESS]\x1b[0m 📷 Kamera: ROI crop (${srcSize}x${srcSize} dari ${img.width}x${img.height}) → ${TARGET_SIZE}x${TARGET_SIZE} + contrast`);
       resolve(canvas.toDataURL('image/jpeg', 0.88));
     };
@@ -107,6 +109,7 @@ const preprocessGalleryImage = (rawImageSrc: string): Promise<string> => {
       const imageData = ctx.getImageData(0, 0, TARGET_SIZE, TARGET_SIZE);
       ctx.putImageData(applyAutoContrast(imageData), 0, 0);
 
+      logToServer('INFO', `[ScannerEngine] Galeri: scale ${img.width}x${img.height} → ${scaledW}x${scaledH} + contrast`);
       console.log(`\x1b[36m[PREPROCESS]\x1b[0m 🖼️ Galeri: scale ${img.width}x${img.height} → ${scaledW}x${scaledH} (offset ${offsetX},${offsetY}) + contrast`);
       resolve(canvas.toDataURL('image/jpeg', 0.88));
     };
@@ -174,8 +177,10 @@ export default function ScannerEngine(props: ScannerEngineProps) {
           
           setIsEnhancing(false);
           setCapturedImage(rawImageSrc); // Tampilkan gambar asli ke user (lebih natural)
+          logToServer('SUCCESS', `[ScannerEngine] Preprocessing kamera selesai, meneruskan ke AI`);
           props.onAnalyze(processedImageSrc); // Kirim gambar yang sudah di-enhance ke AI
-        } catch (e) {
+        } catch (e: any) {
+          logToServer('ERROR', `[ScannerEngine] Gagal memproses gambar kamera: ${e?.message || e}`);
           console.error("Failed to capture or process image:", e);
           setIsEnhancing(false);
         }
@@ -201,10 +206,15 @@ export default function ScannerEngine(props: ScannerEngineProps) {
         setIsEnhancing(true); // Tampilkan loading enhancement
 
         // Terapkan preprocessing galeri: resize + contrast (tanpa ROI crop)
-        const processedImageSrc = await preprocessGalleryImage(rawImageSrc);
-
-        setIsEnhancing(false);
-        props.onAnalyze(processedImageSrc); // Kirim gambar yang sudah di-enhance ke AI
+        try {
+          const processedImageSrc = await preprocessGalleryImage(rawImageSrc);
+          setIsEnhancing(false);
+          logToServer('SUCCESS', `[ScannerEngine] Preprocessing galeri selesai, meneruskan ke AI`);
+          props.onAnalyze(processedImageSrc); // Kirim gambar yang sudah di-enhance ke AI
+        } catch (e: any) {
+          logToServer('ERROR', `[ScannerEngine] Gagal memproses gambar galeri: ${e?.message || e}`);
+          setIsEnhancing(false);
+        }
       };
       reader.readAsDataURL(file);
     }
