@@ -49,20 +49,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log('\x1b[36m[AI BACKEND]\x1b[0m 🤖 Mengirim gambar ke Cloudflare Llama-3.2-11B-Vision...');
 
-    const systemPrompt = `You are a strict waste classification AI for Pasuruhan Kidul Village.
-Your ONLY job is to look at the image and classify it.
-RULES (follow exactly):
-1. If the image is too blurry, too dark, a solid color, or you cannot clearly identify any object, respond with category "GAMBAR_BURAM".
-2. If the image shows a human face, person, body parts, empty room, furniture, electronics in use, or ANY object that is clearly NOT waste/trash → respond with category "BUKAN_SAMPAH".
-3. If the image shows actual waste or trash, classify into ONE of: PLASTIK, KERTAS, ORGANIK, RESIDU.
-   - PLASTIK: plastic bottles, plastic bags, plastic cups, plastic packaging
-   - KERTAS: cardboard boxes, paper, newspapers, cartons
-   - ORGANIK: food scraps, leaves, fruit peels
-   - RESIDU: batteries, mixed waste, diapers, broken glass, electronics waste
-4. Respond ONLY with valid JSON. No explanation. No markdown. Just JSON.`;
+    const systemPrompt = `You are a strict waste classification expert AI for Pasuruhan Kidul Village, Indonesia.
+Your ONLY job is to carefully observe the image and classify the waste shown.
 
-    const userMessage = `Classify this image. Respond with ONLY this JSON format:
-{"category": "PLASTIK", "label": "Botol Plastik"}
+STEP 1 - OBSERVE FIRST (Chain-of-Thought):
+Before classifying, you MUST briefly describe what you see: the main object's material, shape, color, and texture.
+
+STEP 2 - CLASSIFY based ONLY on your observation using these rules:
+- If the image is too blurry, too dark, mostly one solid dark/light color, out of focus, or you genuinely cannot identify any clear object → category "GAMBAR_BURAM"
+- If the image shows a human, person, face, body parts, a room, furniture, wall, floor, vehicle, electronic device in use, or ANY non-waste object → category "BUKAN_SAMPAH"
+- If the image shows actual waste/trash, classify into ONE of: PLASTIK, KERTAS, ORGANIK, RESIDU
+  • PLASTIK: plastic bottles, plastic bags, cups, packaging with shiny/smooth surface
+  • KERTAS: cardboard boxes, paper sheets, newspapers, cartons with fibrous/matte surface
+  • ORGANIK: food scraps, banana/fruit peels, leaves, vegetable waste — usually brown/green and soft
+  • RESIDU: batteries, diapers, broken glass, mixed waste, electronic waste, medical waste
+
+ANTI-BIAS RULES (CRITICAL — follow strictly):
+- DO NOT default to PLASTIK when you are uncertain. Use GAMBAR_BURAM for uncertainty.
+- If the object is brown, dark, or organic-looking → likely ORGANIK, NOT PLASTIK.
+- Only classify as PLASTIK if you can clearly see: shiny/smooth plastic surface, plastic bottle shape, plastic bag, or clearly visible plastic packaging.
+- If background dominates the image (floor, wall, ground) → focus ONLY on the main foreground object.
+
+EXAMPLES (learn from these exact patterns):
+- Crumpled clear/colored water bottle, shiny smooth surface → {"observation":"A crumpled plastic water bottle with transparent shiny surface","category":"PLASTIK","label":"Botol Plastik Bekas"}
+- Dark blurry photo, cannot identify any object → {"observation":"The image is too dark and blurry to identify any object clearly","category":"GAMBAR_BURAM","label":"Gambar Tidak Jelas"}
+- Mostly dark/black image with no discernible shape → {"observation":"Solid dark image, no object visible","category":"GAMBAR_BURAM","label":"Gambar Tidak Jelas"}
+- Person's hand or face visible → {"observation":"A human hand/face is visible in the frame","category":"BUKAN_SAMPAH","label":"Bukan Objek Sampah"}
+- Brown banana peel or food scraps → {"observation":"A brown banana peel with soft organic texture","category":"ORGANIK","label":"Kulit Pisang"}
+- Folded cardboard box with matte fibrous texture → {"observation":"A folded cardboard box with rough fibrous brown surface","category":"KERTAS","label":"Kardus Bekas"}
+- Used battery or broken glass → {"observation":"A used AA battery with metal casing","category":"RESIDU","label":"Baterai Bekas"}`;
+
+    const userMessage = `Look at this image carefully.
+STEP 1: Describe in ONE sentence what you see (material, shape, color, texture of the main object).
+STEP 2: Based on your observation, classify the waste.
+
+Respond with ONLY this JSON format (no extra text, no markdown):
+{"observation": "...", "category": "PLASTIK", "label": "Botol Plastik"}
 
 Valid categories: PLASTIK, KERTAS, ORGANIK, RESIDU, BUKAN_SAMPAH, GAMBAR_BURAM`;
 
@@ -164,19 +186,35 @@ Valid categories: PLASTIK, KERTAS, ORGANIK, RESIDU, BUKAN_SAMPAH, GAMBAR_BURAM`;
       }
     }
 
-      // IDE B: Validasi Deskripsi (Keyword Override)
-      const deskripsiLower = (parsedData?.deskripsi || responseText || "").toLowerCase();
-      const forbiddenKeywords = [
+      // FASE 1 UPGRADE: Validasi Silang via Chain-of-Thought Observation + Keyword Override
+      // Kini kita cek field 'observation' (dari Chain-of-Thought) DAN responseText sekaligus
+      const observationText = (parsedData?.observation || "").toLowerCase();
+      const deskripsiLower = (observationText || parsedData?.deskripsi || responseText || "").toLowerCase();
+      
+      // Kata-kata dari 'observation' AI yang menandakan objek bukan sampah (Bahasa Indonesia + Inggris)
+      const nonWasteObservationKeywords = [
+        // Bahasa Inggris (dari observasi AI yang berbahasa Inggris)
+        'person', 'human', 'face', 'hand', 'finger', 'people', 'man', 'woman', 'child',
+        'wall', 'floor', 'ceiling', 'room', 'door', 'window', 'furniture', 'table', 'chair',
+        'vehicle', 'motorcycle', 'car', 'bicycle', 'road', 'pavement', 'street',
+        'screen', 'phone', 'computer', 'camera', 'device',
+        // Bahasa Indonesia (dari responseText / deskripsi)
         'motor', 'orang', 'manusia', 'ruangan', 'pintu', 'dinding', 'wajah', 
         'tangan', 'jari', 'bukan sampah', 'kamera', 'layar', 'sepeda', 'mobil', 'rumah'
       ];
       
-      const hasForbiddenKeyword = forbiddenKeywords.some(keyword => deskripsiLower.includes(keyword));
+      const hasForbiddenKeyword = nonWasteObservationKeywords.some(keyword => deskripsiLower.includes(keyword));
       
+      // Cross-validation: jika observation menyebut manusia/non-waste tapi kategori bukan BUKAN_SAMPAH → override
       if (hasForbiddenKeyword && parsedData) {
-         console.log(`\x1b[33m[AI BACKEND]\x1b[0m ⚠️ Keyword dilarang ditemukan. Meng-override ke BUKAN_SAMPAH.`);
+         console.log(`\x1b[33m[AI BACKEND]\x1b[0m ⚠️ Observation/Keyword mendeteksi non-waste ("${observationText.substring(0,60)}..."). Override → BUKAN_SAMPAH.`);
          parsedData.category = "BUKAN_SAMPAH";
-         parsedData.label = "Bukan Sampah (Objek Lain)";
+         parsedData.label = "Bukan Objek Sampah";
+      }
+
+      // Log observation untuk debugging
+      if (observationText) {
+        console.log(`\x1b[35m[AI OBSERVATION]\x1b[0m 👁️ "${observationText.substring(0, 100)}"`);
       }
 
       if (!parsedData || !parsedData.category) {
