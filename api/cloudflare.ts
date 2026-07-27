@@ -121,11 +121,11 @@ Valid categories: PLASTIK, KERTAS, ORGANIK, RESIDU, BUKAN_SAMPAH`;
     console.log(`\x1b[36m[DEBUG CLOUDFLARE]\x1b[0m ${JSON.stringify(result)}`);
     
     let parsedData: any = null;
+    let responseText = "";
 
     if (result.result && result.result.response && typeof result.result.response === 'object') {
       parsedData = result.result.response;
     } else {
-      let responseText = "";
       if (typeof result.result === 'string') {
         responseText = result.result;
       } else if (result.result && typeof result.result.response === 'string') {
