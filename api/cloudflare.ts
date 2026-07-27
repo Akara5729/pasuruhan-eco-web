@@ -50,19 +50,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('\x1b[36m[AI BACKEND]\x1b[0m 🤖 Mengirim gambar ke Cloudflare Llama-3.2-11B-Vision...');
 
     const prompt = `
-      Anda adalah AI asisten pemilah sampah untuk Desa Pasuruhan Kidul.
-      Tugas utama Anda adalah mendeteksi apakah gambar ini adalah SAMPAH atau BUKAN SAMPAH.
-      Jika gambar menampilkan wajah manusia, anggota tubuh, orang, ruangan kosong, atau benda yang JELAS-JELAS BUKAN SAMPAH, Anda WAJIB merespon dengan:
-      { "category": "BUKAN_SAMPAH", "label": "Bukan Sampah (Objek Lain)" }
+      You are an AI trash-sorting assistant for Pasuruhan Kidul Village.
+      First, describe what you see in the image in one short sentence (in Indonesian) in the "deskripsi" field.
+      Then, determine if it is TRASH or NOT TRASH. 
+      If the image contains a human face, a person, body parts, an empty room, or is clearly NOT trash, you MUST classify it as "BUKAN_SAMPAH".
+      If it IS trash, classify it into ONE of these 4 categories: PLASTIK, KERTAS, ORGANIK, RESIDU.
 
-      Jika gambar ADALAH sampah, berikan 2 hal:
-      1. 'category': Klasifikasikan ke dalam SALAH SATU dari 4 kategori ini: PLASTIK, KERTAS, ORGANIK, RESIDU.
-      2. 'label': Nama spesifik dari benda tersebut dalam bahasa Indonesia (misalnya: "Botol Plastik", "Sisa Makanan").
-
-      Berikan respon HANYA berupa JSON persis seperti format ini, tanpa tambahan markdown atau teks apapun:
+      You MUST respond ONLY with a valid JSON object in this exact format, with no markdown formatting or other text:
       {
-        "category": "PLASTIK",
-        "label": "Botol Plastik"
+        "deskripsi": "Gambar menunjukkan seorang pria memakai masker hitam.",
+        "category": "BUKAN_SAMPAH",
+        "label": "Bukan Sampah"
       }
     `;
 
@@ -85,7 +83,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           'Authorization': `Bearer ${cred.apiKey}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ prompt: prompt, image: imageArray })
+        body: JSON.stringify({ 
+          prompt: prompt, 
+          image: imageArray,
+          temperature: 0.1,
+          max_tokens: 512
+        })
       });
 
       if (cfResponse.ok) {
