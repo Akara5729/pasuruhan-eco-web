@@ -203,7 +203,6 @@ export default function ScannerEngine(props: ScannerEngineProps) {
       <input 
         type="file" 
         accept="image/*" 
-        capture="environment" 
         ref={fileInputRef}
         onChange={handleFileUpload}
         className="hidden" 
