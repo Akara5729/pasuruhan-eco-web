@@ -30,6 +30,7 @@ export default function ResultCard({ result, imageSrc, onClose }: ResultCardProp
       case 'KERTAS': return 'bg-eco-blue text-white';
       case 'ORGANIK': return 'bg-eco-green text-white';
       case 'RESIDU': return 'bg-eco-red text-white';
+      case 'BUKAN_SAMPAH': return 'bg-gray-800 text-white';
       default: return 'bg-gray-500 text-white';
     }
   };
@@ -40,6 +41,7 @@ export default function ResultCard({ result, imageSrc, onClose }: ResultCardProp
       case 'KERTAS': return 'border-eco-blue';
       case 'ORGANIK': return 'border-eco-green';
       case 'RESIDU': return 'border-eco-red';
+      case 'BUKAN_SAMPAH': return 'border-gray-800';
       default: return 'border-gray-500';
     }
   };
@@ -50,6 +52,7 @@ export default function ResultCard({ result, imageSrc, onClose }: ResultCardProp
       case 'KERTAS': return 'text-eco-blue';
       case 'ORGANIK': return 'text-eco-green';
       case 'RESIDU': return 'text-eco-red';
+      case 'BUKAN_SAMPAH': return 'text-gray-800';
       default: return 'text-gray-500';
     }
   };
@@ -60,6 +63,7 @@ export default function ResultCard({ result, imageSrc, onClose }: ResultCardProp
       case 'KERTAS': return 'bg-eco-blue/20';
       case 'ORGANIK': return 'bg-eco-green/20';
       case 'RESIDU': return 'bg-eco-red/20';
+      case 'BUKAN_SAMPAH': return 'bg-gray-800/20';
       default: return 'bg-gray-500/20';
     }
   };

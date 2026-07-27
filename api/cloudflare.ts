@@ -51,14 +51,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const prompt = `
       Anda adalah AI asisten pemilah sampah untuk Desa Pasuruhan Kidul.
-      Analisis gambar sampah ini dengan teliti.
-      Berikan 2 hal:
-      1. 'category': Klasifikasikan ke dalam SALAH SATU dari 4 kategori berikut: PLASTIK, KERTAS, ORGANIK, RESIDU.
-      2. 'label': Nama spesifik dari benda tersebut dalam bahasa Indonesia (misalnya: "Botol Plastik", "Kardus Bekas", "Sisa Makanan", "Baterai Bekas").
+      Tugas utama Anda adalah mendeteksi apakah gambar ini adalah SAMPAH atau BUKAN SAMPAH.
+      Jika gambar menampilkan wajah manusia, anggota tubuh, orang, ruangan kosong, atau benda yang JELAS-JELAS BUKAN SAMPAH, Anda WAJIB merespon dengan:
+      { "category": "BUKAN_SAMPAH", "label": "Bukan Sampah (Objek Lain)" }
 
-      Jika gambar tidak terlihat seperti sampah, masukkan ke kategori RESIDU dengan label "Tidak Dikenali".
+      Jika gambar ADALAH sampah, berikan 2 hal:
+      1. 'category': Klasifikasikan ke dalam SALAH SATU dari 4 kategori ini: PLASTIK, KERTAS, ORGANIK, RESIDU.
+      2. 'label': Nama spesifik dari benda tersebut dalam bahasa Indonesia (misalnya: "Botol Plastik", "Sisa Makanan").
 
-      Berikan respon HANYA berupa JSON dengan format persis seperti ini, tanpa tambahan apapun:
+      Berikan respon HANYA berupa JSON persis seperti format ini, tanpa tambahan markdown atau teks apapun:
       {
         "category": "PLASTIK",
         "label": "Botol Plastik"
@@ -137,8 +138,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Fallback Regex jika Cloudflare mengembalikan Markdown alih-alih JSON
       if (!parsedData || !parsedData.category) {
-        const catMatch = responseText.match(/\*\*(?:Category|Kategori):\*\*\s*([A-Za-z]+)/i) || responseText.match(/category.*?(PLASTIK|KERTAS|ORGANIK|RESIDU)/i);
-        const labelMatch = responseText.match(/\*\*(?:Label|Nama):\*\*\s*([^\n*]+)/i) || responseText.match(/label.*?([\w\s]+)/i);
+        const catMatch = responseText.match(/\*\*(?:Category|Kategori):\*\*\s*([A-Za-z_]+)/i) || responseText.match(/category.*?(PLASTIK|KERTAS|ORGANIK|RESIDU|BUKAN_SAMPAH)/i);
+        const labelMatch = responseText.match(/\*\*(?:Label|Nama):\*\*\s*([^\n*]+)/i) || responseText.match(/label.*?([\w\s()]+)/i);
         
         if (catMatch) {
           parsedData = {
