@@ -49,24 +49,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log('\x1b[36m[AI BACKEND]\x1b[0m 🤖 Mengirim gambar ke Cloudflare Llama-3.2-11B-Vision...');
 
-    const prompt = `
-      You are an AI trash-sorting assistant for Pasuruhan Kidul Village.
-      First, describe what you see in the image in one short sentence (in Indonesian) in the "deskripsi" field.
-      Then, determine if it is TRASH or NOT TRASH. 
-      If the image contains a human face, a person, body parts, an empty room, or is clearly NOT trash, you MUST classify it as "BUKAN_SAMPAH".
-      If it IS trash, classify it into ONE of these 4 categories: PLASTIK, KERTAS, ORGANIK, RESIDU.
+    const systemPrompt = `You are a strict waste classification AI for Pasuruhan Kidul Village.
+Your ONLY job is to look at the image and classify it.
+RULES (follow exactly):
+1. If the image shows a human face, person, body parts, empty room, furniture, electronics in use, or ANY object that is clearly NOT waste/trash → respond with category "BUKAN_SAMPAH".
+2. If the image shows actual waste or trash, classify into ONE of: PLASTIK, KERTAS, ORGANIK, RESIDU.
+   - PLASTIK: plastic bottles, plastic bags, plastic cups, plastic packaging
+   - KERTAS: cardboard boxes, paper, newspapers, cartons
+   - ORGANIK: food scraps, leaves, fruit peels
+   - RESIDU: batteries, mixed waste, diapers, broken glass, electronics waste
+3. Respond ONLY with valid JSON. No explanation. No markdown. Just JSON.`;
 
-      You MUST respond ONLY with a valid JSON object in this exact format, with no markdown formatting or other text:
-      {
-        "deskripsi": "Gambar menunjukkan seorang pria memakai masker hitam.",
-        "category": "BUKAN_SAMPAH",
-        "label": "Bukan Sampah"
-      }
-    `;
+    const userMessage = `Classify this image. Respond with ONLY this JSON format:
+{"category": "PLASTIK", "label": "Botol Plastik"}
 
-    const base64Data = imageSrc.split(',')[1] || imageSrc;
-    const imageBuffer = Buffer.from(base64Data, 'base64');
-    const imageArray = [...imageBuffer]; 
+Valid categories: PLASTIK, KERTAS, ORGANIK, RESIDU, BUKAN_SAMPAH`;
+
+    // Gunakan format base64 data URL langsung (tanpa konversi ke array)
+    const mimeTypeMatch = imageSrc.match(/^data:(image\/\w+);base64,/);
+    const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/jpeg';
+    const base64Data = imageSrc.startsWith('data:') ? imageSrc : `data:image/jpeg;base64,${imageSrc}`;
 
     let cfResponse: any;
     let success = false;
@@ -83,11 +85,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           'Authorization': `Bearer ${cred.apiKey}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ 
-          prompt: prompt, 
-          image: imageArray,
+        body: JSON.stringify({
+          messages: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: [
+                { type: "image_url", image_url: { url: base64Data } },
+                { type: "text", text: userMessage }
+              ]
+            }
+          ],
           temperature: 0.1,
-          max_tokens: 512
+          max_tokens: 256
         })
       });
 
