@@ -1,14 +1,128 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { Camera, Image as ImageIcon, RotateCcw } from 'lucide-react';
+import { Camera, Image as ImageIcon, RotateCcw, Sparkles } from 'lucide-react';
 
 interface ScannerEngineProps {
   onAnalyze: (imageSrc: string) => void;
 }
 
+// ─────────────────────────────────────────────
+// FASE 2: Image Preprocessing Pipeline
+// ─────────────────────────────────────────────
+
+const TARGET_SIZE = 640; // Ukuran optimal untuk model Llama Vision
+
+/**
+ * Auto-Contrast Enhancement via Histogram Stretching.
+ * Memperjelas perbedaan terang/gelap agar tekstur objek lebih terlihat AI.
+ */
+const applyAutoContrast = (imageData: ImageData): ImageData => {
+  const data = imageData.data;
+  let minR = 255, maxR = 0, minG = 255, maxG = 0, minB = 255, maxB = 0;
+
+  // Pass 1: cari nilai min & max per channel
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i]   < minR) minR = data[i];   if (data[i]   > maxR) maxR = data[i];
+    if (data[i+1] < minG) minG = data[i+1]; if (data[i+1] > maxG) maxG = data[i+1];
+    if (data[i+2] < minB) minB = data[i+2]; if (data[i+2] > maxB) maxB = data[i+2];
+  }
+
+  const rangeR = maxR - minR || 1;
+  const rangeG = maxG - minG || 1;
+  const rangeB = maxB - minB || 1;
+
+  // Pass 2: stretch histogram ke 0-255
+  for (let i = 0; i < data.length; i += 4) {
+    data[i]   = Math.round(((data[i]   - minR) / rangeR) * 255);
+    data[i+1] = Math.round(((data[i+1] - minG) / rangeG) * 255);
+    data[i+2] = Math.round(((data[i+2] - minB) / rangeB) * 255);
+  }
+
+  return imageData;
+};
+
+/**
+ * Preprocessing untuk gambar dari KAMERA:
+ * 1. ROI Crop: ambil kotak tengah dari frame (area yang ada di scanner box)
+ * 2. Resize ke TARGET_SIZE x TARGET_SIZE
+ * 3. Auto-Contrast Enhancement
+ */
+const preprocessCameraImage = (rawImageSrc: string): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = TARGET_SIZE;
+      canvas.height = TARGET_SIZE;
+      const ctx = canvas.getContext('2d')!;
+
+      // ROI Crop: ambil square tengah dari frame kamera
+      // Ini mensimulasikan crop pada area scanner box yang terlihat user
+      const srcSize = Math.min(img.width, img.height);
+      const srcX = (img.width - srcSize) / 2;
+      const srcY = (img.height - srcSize) / 2;
+
+      // Gambar langsung crop + scale ke TARGET_SIZE
+      ctx.drawImage(img, srcX, srcY, srcSize, srcSize, 0, 0, TARGET_SIZE, TARGET_SIZE);
+
+      // Terapkan auto-contrast
+      const imageData = ctx.getImageData(0, 0, TARGET_SIZE, TARGET_SIZE);
+      ctx.putImageData(applyAutoContrast(imageData), 0, 0);
+
+      console.log(`\x1b[36m[PREPROCESS]\x1b[0m 📷 Kamera: ROI crop (${srcSize}x${srcSize} dari ${img.width}x${img.height}) → ${TARGET_SIZE}x${TARGET_SIZE} + contrast`);
+      resolve(canvas.toDataURL('image/jpeg', 0.88));
+    };
+    img.src = rawImageSrc;
+  });
+};
+
+/**
+ * Preprocessing untuk gambar dari GALERI:
+ * 1. Resize agar muat dalam TARGET_SIZE x TARGET_SIZE (aspect ratio tetap)
+ * 2. Pad sisa area dengan putih agar canvas penuh
+ * 3. Auto-Contrast Enhancement
+ */
+const preprocessGalleryImage = (rawImageSrc: string): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = TARGET_SIZE;
+      canvas.height = TARGET_SIZE;
+      const ctx = canvas.getContext('2d')!;
+
+      // Latar belakang putih (agar AI tidak bingung dengan padding hitam)
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, TARGET_SIZE, TARGET_SIZE);
+
+      // Hitung scale agar gambar muat di dalam kotak (letterbox/pillarbox)
+      const scale = Math.min(TARGET_SIZE / img.width, TARGET_SIZE / img.height);
+      const scaledW = Math.round(img.width * scale);
+      const scaledH = Math.round(img.height * scale);
+      const offsetX = Math.round((TARGET_SIZE - scaledW) / 2);
+      const offsetY = Math.round((TARGET_SIZE - scaledH) / 2);
+
+      ctx.drawImage(img, offsetX, offsetY, scaledW, scaledH);
+
+      // Terapkan auto-contrast
+      const imageData = ctx.getImageData(0, 0, TARGET_SIZE, TARGET_SIZE);
+      ctx.putImageData(applyAutoContrast(imageData), 0, 0);
+
+      console.log(`\x1b[36m[PREPROCESS]\x1b[0m 🖼️ Galeri: scale ${img.width}x${img.height} → ${scaledW}x${scaledH} (offset ${offsetX},${offsetY}) + contrast`);
+      resolve(canvas.toDataURL('image/jpeg', 0.88));
+    };
+    img.src = rawImageSrc;
+  });
+};
+
+// ─────────────────────────────────────────────
+// Komponen Utama
+// ─────────────────────────────────────────────
+
 export default function ScannerEngine(props: ScannerEngineProps) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [isEnhancing, setIsEnhancing] = useState(false); // State loading preprocessing
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -33,26 +147,37 @@ export default function ScannerEngine(props: ScannerEngineProps) {
     }
   }, [stream]);
 
-  const captureFrame = () => {
+  // ── FASE 2: captureFrame dengan preprocessing pipeline ──
+  const captureFrame = async () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      
+
       const width = video.videoWidth || video.clientWidth || 640;
       const height = video.videoHeight || video.clientHeight || 480;
-      
+
       canvas.width = width;
       canvas.height = height;
-      
+
       const ctx = canvas.getContext('2d');
       if (ctx) {
         try {
+          // 1. Ambil frame mentah dari kamera
           ctx.drawImage(video, 0, 0, width, height);
-          const imageSrc = canvas.toDataURL('image/jpeg', 0.8);
+          const rawImageSrc = canvas.toDataURL('image/jpeg', 0.95);
+          
           stopCamera();
-          props.onAnalyze(imageSrc);
+          setIsEnhancing(true); // Tampilkan loading enhancement
+
+          // 2. Terapkan preprocessing: ROI crop + resize + contrast
+          const processedImageSrc = await preprocessCameraImage(rawImageSrc);
+          
+          setIsEnhancing(false);
+          setCapturedImage(rawImageSrc); // Tampilkan gambar asli ke user (lebih natural)
+          props.onAnalyze(processedImageSrc); // Kirim gambar yang sudah di-enhance ke AI
         } catch (e) {
-          console.error("Failed to capture image:", e);
+          console.error("Failed to capture or process image:", e);
+          setIsEnhancing(false);
         }
       }
     }
@@ -64,15 +189,22 @@ export default function ScannerEngine(props: ScannerEngineProps) {
     };
   }, [stopCamera]);
 
+  // ── FASE 2: handleFileUpload dengan preprocessing pipeline ──
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (event) => {
-        const result = event.target?.result as string;
-        setCapturedImage(result);
+      reader.onload = async (event) => {
+        const rawImageSrc = event.target?.result as string;
+        setCapturedImage(rawImageSrc);
         stopCamera();
-        props.onAnalyze(result);
+        setIsEnhancing(true); // Tampilkan loading enhancement
+
+        // Terapkan preprocessing galeri: resize + contrast (tanpa ROI crop)
+        const processedImageSrc = await preprocessGalleryImage(rawImageSrc);
+
+        setIsEnhancing(false);
+        props.onAnalyze(processedImageSrc); // Kirim gambar yang sudah di-enhance ke AI
       };
       reader.readAsDataURL(file);
     }
@@ -92,21 +224,34 @@ export default function ScannerEngine(props: ScannerEngineProps) {
     }
   }, [stream]);
 
+  // ── State: Gambar sudah diambil, menunggu konfirmasi ──
   if (capturedImage) {
     return (
       <div className="flex flex-col h-full bg-black">
         <div className="relative flex-1 flex items-center justify-center overflow-hidden">
           <img src={capturedImage} alt="Captured" className="max-h-full max-w-full object-contain" />
+          {/* Overlay animasi saat enhancing */}
+          {isEnhancing && (
+            <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-eco-green/20 flex items-center justify-center animate-pulse">
+                <Sparkles className="w-8 h-8 text-eco-green" />
+              </div>
+              <p className="text-white font-semibold text-sm">Memproses gambar...</p>
+              <p className="text-white/60 text-xs">Meningkatkan kualitas untuk AI</p>
+            </div>
+          )}
         </div>
-        <div className="bg-white rounded-t-3xl p-6 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-10 flex flex-col gap-4 pb-12">
-          <button 
-            onClick={retakePhoto}
-            className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-2xl py-4 font-bold text-lg flex items-center justify-center gap-2 transition-all active:scale-95"
-          >
-            <RotateCcw className="w-6 h-6" />
-            Foto Ulang / Tutup
-          </button>
-        </div>
+        {!isEnhancing && (
+          <div className="bg-white rounded-t-3xl p-6 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-10 flex flex-col gap-4 pb-12">
+            <button
+              onClick={retakePhoto}
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-2xl py-4 font-bold text-lg flex items-center justify-center gap-2 transition-all active:scale-95"
+            >
+              <RotateCcw className="w-6 h-6" />
+              Foto Ulang / Tutup
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -118,7 +263,7 @@ export default function ScannerEngine(props: ScannerEngineProps) {
           <Camera className="w-20 h-20 mb-6 opacity-30 text-eco-green" />
           <h2 className="text-2xl font-bold mb-2">Pemindai Sampah</h2>
           <p className="text-eco-text-light mb-8 max-w-xs">Arahkan kamera ke sampah untuk mengetahui jenis dan cara membuangnya.</p>
-          <button 
+          <button
             onClick={startCamera}
             className="bg-eco-green hover:bg-eco-green-dark text-white rounded-full py-4 px-8 font-bold text-lg transition-all active:scale-95 w-full max-w-xs shadow-lg shadow-eco-green/30"
           >
@@ -129,7 +274,7 @@ export default function ScannerEngine(props: ScannerEngineProps) {
             <span className="text-gray-500 text-sm">Atau</span>
             <div className="h-px w-16 bg-gray-300"></div>
           </div>
-          <button 
+          <button
             onClick={() => fileInputRef.current?.click()}
             className="mt-6 text-eco-green font-medium flex items-center gap-2 p-2 active:opacity-70"
           >
@@ -145,7 +290,7 @@ export default function ScannerEngine(props: ScannerEngineProps) {
             <Camera className="w-12 h-12 text-eco-red" />
           </div>
           <p className="text-eco-red mb-8 max-w-xs">{error}</p>
-          <button 
+          <button
             onClick={() => fileInputRef.current?.click()}
             className="bg-eco-blue hover:bg-eco-blue/90 text-white rounded-full py-4 px-8 font-bold text-lg flex items-center justify-center gap-2 transition-all active:scale-95 w-full max-w-xs shadow-lg shadow-eco-blue/30"
           >
@@ -157,15 +302,15 @@ export default function ScannerEngine(props: ScannerEngineProps) {
 
       {stream && (
         <>
-          <video 
+          <video
             ref={videoRef}
-            autoPlay 
-            playsInline 
+            autoPlay
+            playsInline
             muted
             className="absolute inset-0 w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60 pointer-events-none" />
-          
+
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-8">
             <div className="w-full aspect-square max-w-sm border-2 border-white/50 rounded-3xl relative flex flex-col justify-end pb-6">
               <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-eco-green rounded-tl-3xl" />
@@ -179,19 +324,19 @@ export default function ScannerEngine(props: ScannerEngineProps) {
           </div>
 
           <div className="absolute bottom-0 left-0 right-0 p-8 pb-12 flex items-center justify-between z-10 max-w-xs mx-auto">
-            <button 
+            <button
               onClick={() => fileInputRef.current?.click()}
               className="w-12 h-12 rounded-full bg-black/40 backdrop-blur-md border border-white/20 flex items-center justify-center text-white active:scale-95 transition-transform"
             >
               <ImageIcon className="w-5 h-5" />
             </button>
-            <button 
+            <button
               onClick={captureFrame}
               className="w-20 h-20 rounded-full border-4 border-white active:scale-95 flex items-center justify-center transition-all"
             >
               <div className="w-16 h-16 bg-white rounded-full transition-all" />
             </button>
-            <button 
+            <button
               onClick={stopCamera}
               className="w-12 h-12 rounded-full bg-black/40 backdrop-blur-md border border-white/20 flex items-center justify-center text-white active:scale-95 transition-transform"
             >
@@ -203,12 +348,12 @@ export default function ScannerEngine(props: ScannerEngineProps) {
       )}
 
       <canvas ref={canvasRef} className="hidden" />
-      <input 
-        type="file" 
-        accept="image/*" 
+      <input
+        type="file"
+        accept="image/*"
         ref={fileInputRef}
         onChange={handleFileUpload}
-        className="hidden" 
+        className="hidden"
       />
     </div>
   );
