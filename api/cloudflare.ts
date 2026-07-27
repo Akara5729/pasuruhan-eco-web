@@ -222,14 +222,38 @@ Valid categories: PLASTIK, KERTAS, ORGANIK, RESIDU, BUKAN_SAMPAH, GAMBAR_BURAM`;
         throw new Error("Format respon AI tidak valid dari Cloudflare.");
       }
 
-    console.log(`\x1b[32m[AI BACKEND]\x1b[0m ✔️ Cloudflare berhasil: \x1b[1m${parsedData.category}\x1b[0m, \x1b[1m${parsedData.label}\x1b[0m`);
+    // FASE 3: Real Confidence Score (bukan angka acak)
+    // Kalkulasi berdasarkan kualitas jawaban AI, bukan Math.random()
+    let confidence = 62; // Base score: AI sudah menjawab dengan kategori valid
+
+    // +12 jika AI menjawab dalam format JSON yang benar (bukan fallback regex)
+    const isValidJsonResponse = !!(result.result?.response && typeof result.result.response === 'object') ||
+      (responseText.includes('{') && responseText.includes('}'));
+    if (isValidJsonResponse) confidence += 12;
+
+    // +10 jika AI memberikan observasi yang detail (Chain-of-Thought berjalan)
+    if (observationText && observationText.length > 25) confidence += 10;
+
+    // -15 jika terpaksa di-override oleh keyword (AI tidak sependapat)
+    if (hasForbiddenKeyword) confidence -= 15;
+
+    // Penyesuaian per kategori:
+    // GAMBAR_BURAM: AI sendiri yang memilih → confidence rendah (gambar tidak jelas)
+    if (parsedData.category === 'GAMBAR_BURAM') confidence = Math.min(confidence, 52);
+    // BUKAN_SAMPAH tanpa override: sangat yakin
+    if (parsedData.category === 'BUKAN_SAMPAH' && !hasForbiddenKeyword) confidence = Math.max(confidence, 82);
+
+    // Clamp ke rentang 40-95
+    confidence = Math.max(40, Math.min(95, confidence));
+
+    console.log(`\x1b[32m[AI BACKEND]\x1b[0m ✔️ Cloudflare berhasil: \x1b[1m${parsedData.category}\x1b[0m, \x1b[1m${parsedData.label}\x1b[0m | Confidence: ${confidence}% | Override: ${hasForbiddenKeyword}`);
 
     return res.status(200).json({
       success: true,
       data: {
         category: parsedData.category,
         label: parsedData.label || "Tidak Diketahui",
-        confidence: 90 + Math.floor(Math.random() * 5)
+        confidence
       }
     });
     

@@ -118,14 +118,79 @@ const preprocessGalleryImage = (rawImageSrc: string): Promise<string> => {
 };
 
 // ─────────────────────────────────────────────
-// Komponen Utama
+// FASE 3: Blur Detection (Variance of Laplacian)
 // ─────────────────────────────────────────────
+
+// Threshold: nilai di bawah ini dianggap gambar terlalu buram
+const BLUR_THRESHOLD_CAMERA = 45;  // Ketat — kamera bisa difoto ulang
+const BLUR_THRESHOLD_GALLERY = 18; // Longgar — foto dari galeri tidak bisa diubah
+
+/**
+ * Menghitung skor ketajaman gambar menggunakan Variance of Laplacian.
+ * Nilai tinggi = gambar tajam. Nilai rendah = gambar buram.
+ * Menggunakan sampling setiap 3px untuk performa yang baik di HP.
+ */
+const computeBlurScore = (imageData: ImageData): number => {
+  const { data, width, height } = imageData;
+  const laplacianValues: number[] = [];
+  const step = 3; // Sampling setiap 3 piksel (tradeoff kecepatan vs akurasi)
+
+  for (let y = step; y < height - step; y += step) {
+    for (let x = step; x < width - step; x += step) {
+      // Konversi ke grayscale menggunakan bobot persepsi manusia
+      const toGray = (px: number) => {
+        const i = px * 4;
+        return 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      };
+
+      const center = toGray(y * width + x);
+      const top    = toGray((y - step) * width + x);
+      const bottom = toGray((y + step) * width + x);
+      const left   = toGray(y * width + (x - step));
+      const right  = toGray(y * width + (x + step));
+
+      // Laplacian kernel: [0,1,0],[1,-4,1],[0,1,0]
+      const lap = top + bottom + left + right - 4 * center;
+      laplacianValues.push(lap);
+    }
+  }
+
+  // Hitung varians dari nilai Laplacian
+  const mean = laplacianValues.reduce((a, b) => a + b, 0) / laplacianValues.length;
+  const variance = laplacianValues.reduce((sum, v) => sum + (v - mean) ** 2, 0) / laplacianValues.length;
+  return Math.round(variance);
+};
+
+/**
+ * Cek apakah gambar terlalu buram menggunakan canvas.
+ * Mengembalikan { score, isBlurry }.
+ */
+const checkImageBlur = (rawImageSrc: string, threshold: number): Promise<{ score: number; isBlurry: boolean }> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      // Pakai ukuran kecil untuk performa deteksi (320px cukup untuk blur check)
+      const CHECK_SIZE = 320;
+      const canvas = document.createElement('canvas');
+      canvas.width = CHECK_SIZE;
+      canvas.height = CHECK_SIZE;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, CHECK_SIZE, CHECK_SIZE);
+      const imageData = ctx.getImageData(0, 0, CHECK_SIZE, CHECK_SIZE);
+      const score = computeBlurScore(imageData);
+      resolve({ score, isBlurry: score < threshold });
+    };
+    img.onerror = () => resolve({ score: 999, isBlurry: false }); // Jika gagal load, anggap tidak buram
+    img.src = rawImageSrc;
+  });
+};
 
 export default function ScannerEngine(props: ScannerEngineProps) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const [isEnhancing, setIsEnhancing] = useState(false); // State loading preprocessing
+  const [isEnhancing, setIsEnhancing] = useState(false);
+  const [blurWarning, setBlurWarning] = useState<string | null>(null); // Pesan blur untuk user
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -150,7 +215,7 @@ export default function ScannerEngine(props: ScannerEngineProps) {
     }
   }, [stream]);
 
-  // ── FASE 2: captureFrame dengan preprocessing pipeline ──
+  // ── FASE 2+3: captureFrame dengan blur detection + preprocessing pipeline ──
   const captureFrame = async () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
@@ -168,20 +233,32 @@ export default function ScannerEngine(props: ScannerEngineProps) {
           // 1. Ambil frame mentah dari kamera
           ctx.drawImage(video, 0, 0, width, height);
           const rawImageSrc = canvas.toDataURL('image/jpeg', 0.95);
-          
-          stopCamera();
-          setIsEnhancing(true); // Tampilkan loading enhancement
 
-          // 2. Terapkan preprocessing: ROI crop + resize + contrast
+          // 2. FASE 3: Cek blur sebelum melanjutkan (tanpa stop kamera dulu)
+          const { score, isBlurry } = await checkImageBlur(rawImageSrc, BLUR_THRESHOLD_CAMERA);
+          logToServer('INFO', `[ScannerEngine] Blur check kamera: score=${score}, threshold=${BLUR_THRESHOLD_CAMERA}, isBlurry=${isBlurry}`);
+
+          if (isBlurry) {
+            // Gambar buram → minta user foto ulang TANPA memanggil API
+            logToServer('WARN', `[ScannerEngine] Gambar buram (score=${score}), meminta foto ulang`);
+            setBlurWarning(`📸 Gambar kurang tajam (skor: ${score}). Coba dekatkan kamera dan pastikan objek tidak bergerak.`);
+            return; // Hentikan di sini, kamera tetap aktif
+          }
+
+          // 3. Gambar cukup tajam → lanjut preprocessing
+          setBlurWarning(null);
+          stopCamera();
+          setIsEnhancing(true);
+
           const processedImageSrc = await preprocessCameraImage(rawImageSrc);
-          
+
           setIsEnhancing(false);
-          setCapturedImage(rawImageSrc); // Tampilkan gambar asli ke user (lebih natural)
-          logToServer('SUCCESS', `[ScannerEngine] Preprocessing kamera selesai, meneruskan ke AI`);
-          props.onAnalyze(processedImageSrc); // Kirim gambar yang sudah di-enhance ke AI
+          setCapturedImage(rawImageSrc);
+          logToServer('SUCCESS', `[ScannerEngine] Blur OK (score=${score}), preprocessing selesai, meneruskan ke AI`);
+          props.onAnalyze(processedImageSrc);
         } catch (e: any) {
           logToServer('ERROR', `[ScannerEngine] Gagal memproses gambar kamera: ${e?.message || e}`);
-          console.error("Failed to capture or process image:", e);
+          console.error('Failed to capture or process image:', e);
           setIsEnhancing(false);
         }
       }
@@ -194,23 +271,33 @@ export default function ScannerEngine(props: ScannerEngineProps) {
     };
   }, [stopCamera]);
 
-  // ── FASE 2: handleFileUpload dengan preprocessing pipeline ──
+  // ── FASE 2+3: handleFileUpload dengan blur detection + preprocessing pipeline ──
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = async (event) => {
         const rawImageSrc = event.target?.result as string;
-        setCapturedImage(rawImageSrc);
         stopCamera();
-        setIsEnhancing(true); // Tampilkan loading enhancement
+        setBlurWarning(null);
+        setIsEnhancing(true);
 
-        // Terapkan preprocessing galeri: resize + contrast (tanpa ROI crop)
         try {
+          // FASE 3: Cek blur untuk galeri (threshold lebih longgar)
+          const { score, isBlurry } = await checkImageBlur(rawImageSrc, BLUR_THRESHOLD_GALLERY);
+          logToServer('INFO', `[ScannerEngine] Blur check galeri: score=${score}, threshold=${BLUR_THRESHOLD_GALLERY}, isBlurry=${isBlurry}`);
+
+          if (isBlurry) {
+            // Gambar galeri buram ekstrim → tetap lanjutkan tapi beri peringatan
+            // (Tidak bisa minta foto ulang karena ini dari galeri)
+            logToServer('WARN', `[ScannerEngine] Gambar galeri buram (score=${score}), tetap diproses ke AI`);
+          }
+
           const processedImageSrc = await preprocessGalleryImage(rawImageSrc);
           setIsEnhancing(false);
-          logToServer('SUCCESS', `[ScannerEngine] Preprocessing galeri selesai, meneruskan ke AI`);
-          props.onAnalyze(processedImageSrc); // Kirim gambar yang sudah di-enhance ke AI
+          setCapturedImage(rawImageSrc);
+          logToServer('SUCCESS', `[ScannerEngine] Galeri blur score=${score}, preprocessing selesai, meneruskan ke AI`);
+          props.onAnalyze(processedImageSrc);
         } catch (e: any) {
           logToServer('ERROR', `[ScannerEngine] Gagal memproses gambar galeri: ${e?.message || e}`);
           setIsEnhancing(false);
@@ -322,14 +409,20 @@ export default function ScannerEngine(props: ScannerEngineProps) {
           <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60 pointer-events-none" />
 
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-8">
-            <div className="w-full aspect-square max-w-sm border-2 border-white/50 rounded-3xl relative flex flex-col justify-end pb-6">
-              <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-eco-green rounded-tl-3xl" />
-              <div className="absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 border-eco-green rounded-tr-3xl" />
-              <div className="absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 border-eco-green rounded-bl-3xl" />
-              <div className="absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 border-eco-green rounded-br-3xl" />
-              <p className="text-white text-center bg-black/60 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium mx-4 shadow-lg backdrop-blur-sm">
-                Dekatkan kamera 30-50 cm.<br/>Pastikan <span className="text-eco-amber font-bold">HANYA SAMPAH</span> di dalam kotak.
-              </p>
+            <div className={`w-full aspect-square max-w-sm border-2 rounded-3xl relative flex flex-col justify-end pb-6 transition-colors duration-300 ${blurWarning ? 'border-eco-amber/80' : 'border-white/50'}`}>
+              <div className={`absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 rounded-tl-3xl transition-colors ${blurWarning ? 'border-eco-amber' : 'border-eco-green'}`} />
+              <div className={`absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 rounded-tr-3xl transition-colors ${blurWarning ? 'border-eco-amber' : 'border-eco-green'}`} />
+              <div className={`absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 rounded-bl-3xl transition-colors ${blurWarning ? 'border-eco-amber' : 'border-eco-green'}`} />
+              <div className={`absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 rounded-br-3xl transition-colors ${blurWarning ? 'border-eco-amber' : 'border-eco-green'}`} />
+              {blurWarning ? (
+                <p className="text-eco-amber text-center bg-black/70 px-4 py-2 rounded-xl text-xs font-semibold mx-4 shadow-lg backdrop-blur-sm animate-pulse">
+                  {blurWarning}
+                </p>
+              ) : (
+                <p className="text-white text-center bg-black/60 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium mx-4 shadow-lg backdrop-blur-sm">
+                  Dekatkan kamera 30-50 cm.<br/>Pastikan <span className="text-eco-amber font-bold">HANYA SAMPAH</span> di dalam kotak.
+                </p>
+              )}
             </div>
           </div>
 
