@@ -187,27 +187,31 @@ Valid categories: PLASTIK, KERTAS, ORGANIK, RESIDU, BUKAN_SAMPAH, GAMBAR_BURAM`;
     }
 
       // FASE 1 UPGRADE: Validasi Silang via Chain-of-Thought Observation + Keyword Override
-      // Kini kita cek field 'observation' (dari Chain-of-Thought) DAN responseText sekaligus
+      // PENTING: Hanya kata yang TEGAS menandakan objek UTAMA bukan sampah.
+      // JANGAN tambahkan kata konteks/latar belakang (floor, wall, table, road, dll)
+      // karena AI mendeskripsikan seluruh scene — sampah bisa berada di atas meja atau di jalan.
       const observationText = (parsedData?.observation || "").toLowerCase();
       const deskripsiLower = (observationText || parsedData?.deskripsi || responseText || "").toLowerCase();
       
-      // Kata-kata dari 'observation' AI yang menandakan objek bukan sampah (Bahasa Indonesia + Inggris)
+      // Hanya kata yang HANYA muncul jika objek UTAMA adalah non-sampah:
       const nonWasteObservationKeywords = [
-        // Bahasa Inggris (dari observasi AI yang berbahasa Inggris)
-        'person', 'human', 'face', 'hand', 'finger', 'people', 'man', 'woman', 'child',
-        'wall', 'floor', 'ceiling', 'room', 'door', 'window', 'furniture', 'table', 'chair',
-        'vehicle', 'motorcycle', 'car', 'bicycle', 'road', 'pavement', 'street',
-        'screen', 'phone', 'computer', 'camera', 'device',
-        // Bahasa Indonesia (dari responseText / deskripsi)
-        'motor', 'orang', 'manusia', 'ruangan', 'pintu', 'dinding', 'wajah', 
-        'tangan', 'jari', 'bukan sampah', 'kamera', 'layar', 'sepeda', 'mobil', 'rumah'
+        // Manusia (Bahasa Inggris) — jika ini muncul, berarti objek utama adalah orang
+        'a person', 'a human', 'a man', 'a woman', 'a child', 'a face', 'a hand holding',
+        'person\'s hand', 'human hand', 'person is', 'people are',
+        // Kendaraan (Bahasa Inggris)
+        'a motorcycle', 'a car ', 'a bicycle', 'a vehicle',
+        // Elektronik aktif (bukan elektronik yang dibuang)
+        'a phone screen', 'a computer screen', 'a camera lens',
+        // Bahasa Indonesia — hanya frasa yang jelas menunjuk objek UTAMA
+        'foto orang', 'gambar orang', 'wajah seseorang', 'tangan seseorang',
+        'sebuah motor', 'sebuah mobil', 'sebuah sepeda motor'
       ];
       
       const hasForbiddenKeyword = nonWasteObservationKeywords.some(keyword => deskripsiLower.includes(keyword));
       
-      // Cross-validation: jika observation menyebut manusia/non-waste tapi kategori bukan BUKAN_SAMPAH → override
+      // Cross-validation: jika observation JELAS menyebut manusia/kendaraan sebagai objek utama → override
       if (hasForbiddenKeyword && parsedData) {
-         console.log(`\x1b[33m[AI BACKEND]\x1b[0m ⚠️ Observation/Keyword mendeteksi non-waste ("${observationText.substring(0,60)}..."). Override → BUKAN_SAMPAH.`);
+         console.log(`\x1b[33m[AI BACKEND]\x1b[0m ⚠️ Observation mendeteksi non-waste UTAMA ("${observationText.substring(0,80)}"). Override → BUKAN_SAMPAH.`);
          parsedData.category = "BUKAN_SAMPAH";
          parsedData.label = "Bukan Objek Sampah";
       }
