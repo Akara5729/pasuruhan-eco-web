@@ -167,11 +167,14 @@ export default function ScannerEngine(props: ScannerEngineProps) {
           <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60 pointer-events-none" />
           
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-8">
-            <div className="w-full aspect-square max-w-sm border-2 border-white/50 rounded-3xl relative">
+            <div className="w-full aspect-square max-w-sm border-2 border-white/50 rounded-3xl relative flex flex-col justify-end pb-6">
               <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-eco-green rounded-tl-3xl" />
               <div className="absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 border-eco-green rounded-tr-3xl" />
               <div className="absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 border-eco-green rounded-bl-3xl" />
               <div className="absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 border-eco-green rounded-br-3xl" />
+              <p className="text-white text-center bg-black/60 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium mx-4 shadow-lg backdrop-blur-sm">
+                Dekatkan kamera 30-50 cm.<br/>Pastikan <span className="text-eco-amber font-bold">HANYA SAMPAH</span> di dalam kotak.
+              </p>
             </div>
           </div>
 

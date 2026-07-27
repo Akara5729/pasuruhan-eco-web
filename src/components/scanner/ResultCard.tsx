@@ -160,12 +160,21 @@ export default function ResultCard({ result, imageSrc, onClose }: ResultCardProp
           <ChatInterface result={result} />
         </div>
 
-        <button 
-          onClick={onClose}
-          className="w-full bg-eco-text hover:bg-black text-white rounded-2xl py-4 font-bold text-lg transition-all active:scale-95 mt-4"
-        >
-          Scan Lagi
-        </button>
+        <div className="flex flex-col gap-3 mt-4">
+          <button 
+            onClick={onClose}
+            className="w-full bg-eco-text hover:bg-black text-white rounded-2xl py-4 font-bold text-lg transition-all active:scale-95"
+          >
+            Scan Lagi
+          </button>
+          
+          <button 
+            onClick={onClose}
+            className="w-full bg-red-50 hover:bg-red-100 text-red-500 rounded-2xl py-3 font-medium text-sm transition-all active:scale-95 flex items-center justify-center gap-2"
+          >
+            <X className="w-4 h-4" /> AI Salah Tebak? Scan Ulang
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -163,10 +163,25 @@ Valid categories: PLASTIK, KERTAS, ORGANIK, RESIDU, BUKAN_SAMPAH`;
       }
     }
 
-    if (!parsedData || !parsedData.category) {
-      console.error(`\x1b[31m[AI BACKEND ERROR]\x1b[0m ❌ Gagal mendapatkan format kategori dari: ${JSON.stringify(result)}`);
-      throw new Error("Format respon AI tidak valid dari Cloudflare.");
-    }
+      // IDE B: Validasi Deskripsi (Keyword Override)
+      const deskripsiLower = (parsedData?.deskripsi || responseText || "").toLowerCase();
+      const forbiddenKeywords = [
+        'motor', 'orang', 'manusia', 'ruangan', 'pintu', 'dinding', 'wajah', 
+        'tangan', 'jari', 'bukan sampah', 'kamera', 'layar', 'sepeda', 'mobil', 'rumah'
+      ];
+      
+      const hasForbiddenKeyword = forbiddenKeywords.some(keyword => deskripsiLower.includes(keyword));
+      
+      if (hasForbiddenKeyword && parsedData) {
+         console.log(`\x1b[33m[AI BACKEND]\x1b[0m ⚠️ Keyword dilarang ditemukan. Meng-override ke BUKAN_SAMPAH.`);
+         parsedData.category = "BUKAN_SAMPAH";
+         parsedData.label = "Bukan Sampah (Objek Lain)";
+      }
+
+      if (!parsedData || !parsedData.category) {
+        console.error(`\x1b[31m[AI BACKEND ERROR]\x1b[0m ❌ Gagal mendapatkan format kategori dari: ${JSON.stringify(result)}`);
+        throw new Error("Format respon AI tidak valid dari Cloudflare.");
+      }
 
     console.log(`\x1b[32m[AI BACKEND]\x1b[0m ✔️ Cloudflare berhasil: \x1b[1m${parsedData.category}\x1b[0m, \x1b[1m${parsedData.label}\x1b[0m`);
 
