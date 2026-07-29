@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { Leaf, Info, DollarSign, X, Bot, Sparkles } from 'lucide-react';
+import { Leaf, Info, DollarSign, X, Bot, Sparkles, TrendingUp, Zap } from 'lucide-react';
 import type { AIResult } from '../../services/aiService';
 import { cn } from '../../utils/cn';
 import ChatInterface from './ChatInterface';
@@ -179,17 +179,45 @@ export default function ResultCard({ result, imageSrc, onClose }: ResultCardProp
           </div>
         </div>
 
-        {/* Eco Points */}
-        {result.ecoPoints > 0 && (
-          <div className="bg-eco-amber/10 p-5 rounded-3xl shadow-sm border border-eco-amber/20 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-full bg-eco-amber/20 text-eco-amber">
-                <DollarSign className="w-6 h-6" />
-              </div>
-              <h3 className="font-bold text-eco-text text-lg">Estimasi Nilai</h3>
+        {/* Eco Value Estimation */}
+        {result.ecoValue && (
+          <div className="bg-gradient-to-br from-amber-50 to-orange-50 p-5 rounded-3xl shadow-sm border border-amber-100 flex flex-col gap-4 relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-4 opacity-5">
+              <DollarSign className="w-24 h-24 text-amber-500" />
             </div>
-            <div className="font-extrabold text-2xl text-eco-amber">
-              Rp {result.ecoPoints}
+            
+            <div className="relative z-10">
+              <div className="flex items-center gap-2 mb-3 text-amber-700">
+                <DollarSign className="w-5 h-5" />
+                <h3 className="font-bold">Estimasi Nilai Ekonomi</h3>
+              </div>
+              
+              <div className="bg-white/60 rounded-2xl p-4 mb-3 border border-amber-200/50">
+                <div className="text-xs font-bold text-amber-600 mb-1 uppercase tracking-wider">Harga Pasar</div>
+                <div className="font-extrabold text-xl text-amber-600">
+                  {result.ecoValue.basePrice}
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 mb-3">
+                <div className="p-2 rounded-xl bg-amber-100 text-amber-600 shrink-0">
+                  <Zap className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-amber-800 text-sm mb-0.5">Cara Dapat Harga Maksimal</h4>
+                  <p className="text-amber-900/80 text-sm leading-relaxed">{result.ecoValue.proTip}</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-orange-100 text-orange-600 shrink-0">
+                  <TrendingUp className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-orange-800 text-sm mb-0.5">Target Kumpul Rutin</h4>
+                  <p className="text-orange-900/80 text-sm leading-relaxed">{result.ecoValue.monthlyProjection}</p>
+                </div>
+              </div>
             </div>
           </div>
         )}
