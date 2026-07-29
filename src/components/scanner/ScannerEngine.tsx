@@ -1,5 +1,5 @@
-import React, { useState, useRef, useCallback } from 'react';
-import { Camera, Image as ImageIcon, RotateCcw, Sparkles } from 'lucide-react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { Camera, Image as ImageIcon, RotateCcw, Sparkles, Sun, Maximize, Hand, Layers, X } from 'lucide-react';
 import { logToServer } from '../../services/remoteLogger';
 
 interface ScannerEngineProps {
@@ -265,9 +265,26 @@ export default function ScannerEngine(props: ScannerEngineProps) {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [blurWarning, setBlurWarning] = useState<string | null>(null); // Pesan blur untuk user
+  const [showGuide, setShowGuide] = useState(false); // State untuk modal panduan
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Handlers untuk Panduan Scan ──
+  const handleStartCameraClick = () => {
+    const hasSeenGuide = localStorage.getItem('hasSeenScannerGuide');
+    if (!hasSeenGuide) {
+      setShowGuide(true);
+    } else {
+      startCamera();
+    }
+  };
+
+  const continueToCamera = () => {
+    localStorage.setItem('hasSeenScannerGuide', 'true');
+    setShowGuide(false);
+    startCamera();
+  };
 
   const startCamera = async () => {
     setError(null);
@@ -454,7 +471,7 @@ export default function ScannerEngine(props: ScannerEngineProps) {
           <h2 className="text-2xl font-bold mb-2">Pemindai Sampah</h2>
           <p className="text-eco-text-light mb-8 max-w-xs">Arahkan kamera ke sampah untuk mengetahui jenis dan cara membuangnya.</p>
           <button
-            onClick={startCamera}
+            onClick={handleStartCameraClick}
             className="bg-eco-green hover:bg-eco-green-dark text-white rounded-full py-4 px-8 font-bold text-lg transition-all active:scale-95 w-full max-w-xs shadow-lg shadow-eco-green/30"
           >
             Buka Kamera
@@ -551,6 +568,58 @@ export default function ScannerEngine(props: ScannerEngineProps) {
         onChange={handleFileUpload}
         className="hidden"
       />
+
+      {/* ── Modal Panduan Pemindaian ── */}
+      {showGuide && (
+        <div className="absolute inset-0 z-50 flex items-end justify-center sm:items-center bg-black/60 backdrop-blur-sm p-4 sm:p-0 animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-md rounded-[32px] sm:rounded-3xl p-6 shadow-2xl animate-in slide-in-from-bottom-10 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-300">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-gray-900">Tips Scan Akurat</h3>
+              <button onClick={() => setShowGuide(false)} className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="space-y-6 mb-8">
+              <div className="flex items-start gap-4">
+                <div className="bg-amber-100 text-amber-600 p-3 rounded-2xl shrink-0"><Sun className="w-6 h-6" /></div>
+                <div>
+                  <h4 className="font-bold text-gray-900 mb-1">Cahaya Terang</h4>
+                  <p className="text-sm text-gray-600">Pastikan objek berada di tempat yang terang, tidak gelap atau silau.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="bg-blue-100 text-blue-600 p-3 rounded-2xl shrink-0"><Maximize className="w-6 h-6" /></div>
+                <div>
+                  <h4 className="font-bold text-gray-900 mb-1">Posisi di Tengah</h4>
+                  <p className="text-sm text-gray-600">Letakkan seluruh bagian sampah tepat di tengah layar Anda.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="bg-rose-100 text-rose-600 p-3 rounded-2xl shrink-0"><Hand className="w-6 h-6" /></div>
+                <div>
+                  <h4 className="font-bold text-gray-900 mb-1">Hindari Tangan</h4>
+                  <p className="text-sm text-gray-600">Letakkan di lantai/meja. Jangan dipegang tangan agar AI tidak salah mendeteksi.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="bg-eco-green/20 text-eco-green p-3 rounded-2xl shrink-0"><Layers className="w-6 h-6" /></div>
+                <div>
+                  <h4 className="font-bold text-gray-900 mb-1">Satu per Satu</h4>
+                  <p className="text-sm text-gray-600">Foto satu jenis sampah dalam satu waktu, jangan dicampur.</p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={continueToCamera}
+              className="w-full bg-eco-green hover:bg-eco-green-dark text-white py-4 rounded-2xl font-bold text-lg shadow-[0_8px_30px_rgba(20,184,166,0.3)] hover:shadow-[0_8px_30px_rgba(20,184,166,0.5)] transition-all active:scale-95"
+            >
+              Mengerti, Buka Kamera
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
