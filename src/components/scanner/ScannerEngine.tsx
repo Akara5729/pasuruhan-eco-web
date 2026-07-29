@@ -118,6 +118,80 @@ const preprocessGalleryImage = (rawImageSrc: string): Promise<string> => {
 };
 
 // ─────────────────────────────────────────────
+// ROBOFLOW: Smart Bounding Box Crop
+// Langkah 1 dari Two-Stage Pipeline:
+// Kirim gambar ke Roboflow → dapatkan koordinat sampah → crop.
+// Jika gagal/kosong → fallback ke preprocessing lama (center crop / letterbox).
+// ─────────────────────────────────────────────
+
+interface BoundingBox {
+  x: number; y: number; width: number; height: number;
+  confidence: number; className: string;
+  imageWidth: number; imageHeight: number;
+}
+
+/**
+ * Menghubungi /api/roboflow untuk mendapatkan lokasi sampah (Bounding Box).
+ * Mengembalikan BoundingBox | null.
+ * TIDAK PERNAH throw — error selalu menghasilkan null (fallback aktif).
+ */
+const getRoboflowBoundingBox = async (rawImageSrc: string): Promise<BoundingBox | null> => {
+  try {
+    const response = await fetch('/api/roboflow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: rawImageSrc }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data?.boundingBox ?? null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Langkah 2 dari Two-Stage Pipeline:
+ * Crop gambar asli menggunakan Bounding Box dari Roboflow,
+ * skalakan koordinat dari ruang Roboflow ke ruang gambar asli,
+ * lalu resize ke TARGET_SIZE + auto-contrast.
+ */
+const cropAndPreprocessWithBBox = (rawImageSrc: string, bbox: BoundingBox): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      // Skala koordinat dari dimensi gambar yang diproses Roboflow ke gambar asli
+      const scaleX = img.width  / bbox.imageWidth;
+      const scaleY = img.height / bbox.imageHeight;
+
+      const cropX = bbox.x      * scaleX;
+      const cropY = bbox.y      * scaleY;
+      const cropW = bbox.width  * scaleX;
+      const cropH = bbox.height * scaleY;
+
+      const canvas = document.createElement('canvas');
+      canvas.width  = TARGET_SIZE;
+      canvas.height = TARGET_SIZE;
+      const ctx = canvas.getContext('2d')!;
+
+      // Latar belakang putih agar area padding tidak hitam
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, TARGET_SIZE, TARGET_SIZE);
+
+      // Gambar crop dari bounding box ke canvas TARGET_SIZE
+      ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, TARGET_SIZE, TARGET_SIZE);
+
+      // Terapkan auto-contrast
+      const imageData = ctx.getImageData(0, 0, TARGET_SIZE, TARGET_SIZE);
+      ctx.putImageData(applyAutoContrast(imageData), 0, 0);
+
+      resolve(canvas.toDataURL('image/jpeg', 0.88));
+    };
+    img.src = rawImageSrc;
+  });
+};
+
+// ─────────────────────────────────────────────
 // FASE 3: Blur Detection (Variance of Laplacian)
 // ─────────────────────────────────────────────
 
@@ -215,7 +289,7 @@ export default function ScannerEngine(props: ScannerEngineProps) {
     }
   }, [stream]);
 
-  // ── FASE 2+3: captureFrame dengan blur detection + preprocessing pipeline ──
+  // ── FASE 2+3+Roboflow: captureFrame dengan blur detection + smart crop + preprocessing ──
   const captureFrame = async () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
@@ -234,31 +308,41 @@ export default function ScannerEngine(props: ScannerEngineProps) {
           ctx.drawImage(video, 0, 0, width, height);
           const rawImageSrc = canvas.toDataURL('image/jpeg', 0.95);
 
-          // 2. FASE 3: Cek blur sebelum melanjutkan (tanpa stop kamera dulu)
+          // 2. Blur Detection (Fase 3): tolak gambar buram sebelum panggil API
           const { score, isBlurry } = await checkImageBlur(rawImageSrc, BLUR_THRESHOLD_CAMERA);
-          logToServer('INFO', `[ScannerEngine] Blur check kamera: score=${score}, threshold=${BLUR_THRESHOLD_CAMERA}, isBlurry=${isBlurry}`);
+          logToServer('INFO', `[ScannerEngine] Blur check kamera: score=${score}, isBlurry=${isBlurry}`);
 
           if (isBlurry) {
-            // Gambar buram → minta user foto ulang TANPA memanggil API
             logToServer('WARN', `[ScannerEngine] Gambar buram (score=${score}), meminta foto ulang`);
             setBlurWarning(`📸 Gambar kurang tajam (skor: ${score}). Coba dekatkan kamera dan pastikan objek tidak bergerak.`);
-            return; // Hentikan di sini, kamera tetap aktif
+            return;
           }
 
-          // 3. Gambar cukup tajam → lanjut preprocessing
+          // 3. Gambar tajam → lanjut ke pipeline
           setBlurWarning(null);
           stopCamera();
           setIsEnhancing(true);
 
-          const processedImageSrc = await preprocessCameraImage(rawImageSrc);
+          // 4. Roboflow Smart-Crop: deteksi lokasi sampah, crop hanya area itu
+          logToServer('INFO', '[ScannerEngine] Menghubungi Roboflow untuk deteksi bounding box...');
+          const bbox = await getRoboflowBoundingBox(rawImageSrc);
+
+          let processedImageSrc: string;
+          if (bbox) {
+            logToServer('SUCCESS', `[ScannerEngine] Roboflow ✅ class="${bbox.className}" conf=${bbox.confidence}% → crop + enhance`);
+            processedImageSrc = await cropAndPreprocessWithBBox(rawImageSrc, bbox);
+          } else {
+            logToServer('WARN', '[ScannerEngine] Roboflow tidak menemukan objek, fallback ke center-crop buta');
+            processedImageSrc = await preprocessCameraImage(rawImageSrc);
+          }
 
           setIsEnhancing(false);
           setCapturedImage(rawImageSrc);
-          logToServer('SUCCESS', `[ScannerEngine] Blur OK (score=${score}), preprocessing selesai, meneruskan ke AI`);
+          logToServer('SUCCESS', `[ScannerEngine] Pipeline selesai (Roboflow=${bbox ? 'smart-crop' : 'fallback'}), meneruskan ke Cloudflare AI`);
           props.onAnalyze(processedImageSrc);
         } catch (e: any) {
-          logToServer('ERROR', `[ScannerEngine] Gagal memproses gambar kamera: ${e?.message || e}`);
-          console.error('Failed to capture or process image:', e);
+          logToServer('ERROR', `[ScannerEngine] Gagal di captureFrame: ${e?.message || e}`);
+          console.error('captureFrame error:', e);
           setIsEnhancing(false);
         }
       }
@@ -271,7 +355,7 @@ export default function ScannerEngine(props: ScannerEngineProps) {
     };
   }, [stopCamera]);
 
-  // ── FASE 2+3: handleFileUpload dengan blur detection + preprocessing pipeline ──
+  // ── FASE 2+3+Roboflow: handleFileUpload dengan smart crop pipeline ──
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -283,23 +367,32 @@ export default function ScannerEngine(props: ScannerEngineProps) {
         setIsEnhancing(true);
 
         try {
-          // FASE 3: Cek blur untuk galeri (threshold lebih longgar)
+          // Blur check (longgar untuk galeri)
           const { score, isBlurry } = await checkImageBlur(rawImageSrc, BLUR_THRESHOLD_GALLERY);
-          logToServer('INFO', `[ScannerEngine] Blur check galeri: score=${score}, threshold=${BLUR_THRESHOLD_GALLERY}, isBlurry=${isBlurry}`);
-
+          logToServer('INFO', `[ScannerEngine] Blur check galeri: score=${score}, isBlurry=${isBlurry}`);
           if (isBlurry) {
-            // Gambar galeri buram ekstrim → tetap lanjutkan tapi beri peringatan
-            // (Tidak bisa minta foto ulang karena ini dari galeri)
-            logToServer('WARN', `[ScannerEngine] Gambar galeri buram (score=${score}), tetap diproses ke AI`);
+            logToServer('WARN', `[ScannerEngine] Gambar galeri buram (score=${score}), tetap diproses`);
           }
 
-          const processedImageSrc = await preprocessGalleryImage(rawImageSrc);
+          // Roboflow Smart-Crop untuk galeri juga
+          logToServer('INFO', '[ScannerEngine] Galeri: menghubungi Roboflow untuk bounding box...');
+          const bbox = await getRoboflowBoundingBox(rawImageSrc);
+
+          let processedImageSrc: string;
+          if (bbox) {
+            logToServer('SUCCESS', `[ScannerEngine] Galeri: Roboflow ✅ class="${bbox.className}" conf=${bbox.confidence}% → crop`);
+            processedImageSrc = await cropAndPreprocessWithBBox(rawImageSrc, bbox);
+          } else {
+            logToServer('WARN', '[ScannerEngine] Galeri: Roboflow tidak menemukan objek, fallback ke letterbox');
+            processedImageSrc = await preprocessGalleryImage(rawImageSrc);
+          }
+
           setIsEnhancing(false);
           setCapturedImage(rawImageSrc);
-          logToServer('SUCCESS', `[ScannerEngine] Galeri blur score=${score}, preprocessing selesai, meneruskan ke AI`);
+          logToServer('SUCCESS', `[ScannerEngine] Galeri pipeline selesai (Roboflow=${bbox ? 'smart-crop' : 'fallback'}), meneruskan ke Cloudflare AI`);
           props.onAnalyze(processedImageSrc);
         } catch (e: any) {
-          logToServer('ERROR', `[ScannerEngine] Gagal memproses gambar galeri: ${e?.message || e}`);
+          logToServer('ERROR', `[ScannerEngine] Gagal di handleFileUpload: ${e?.message || e}`);
           setIsEnhancing(false);
         }
       };
