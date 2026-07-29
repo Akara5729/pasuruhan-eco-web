@@ -1,28 +1,20 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 // ─────────────────────────────────────────────────────────────
-// Roboflow Object Detection API Handler
+// Roboflow Serverless Workflow API Handler
 // Bertugas mendeteksi LOKASI sampah (Bounding Box) dalam gambar.
-// BUKAN mengklasifikasikan jenisnya — itu tugas Cloudflare Llama.
 // ─────────────────────────────────────────────────────────────
 
 const ROBOFLOW_API_KEY = process.env.VITE_ROBOFLOW_API_KEY;
-const ROBOFLOW_PROJECT  = 'trash-s8fg7-zvihw-1-yolo11n-t1';
-const ROBOFLOW_VERSION  = '1';
-const ROBOFLOW_ENDPOINT = `https://detect.roboflow.com/${ROBOFLOW_PROJECT}/${ROBOFLOW_VERSION}`;
+const ROBOFLOW_ENDPOINT = `https://serverless.roboflow.com/namikaze-rainy/workflows/trash-s8fg7-zvihw`;
 
 interface RoboflowPrediction {
-  x: number;         // center-X dalam gambar yang diproses Roboflow
+  x: number;         // center-X
   y: number;         // center-Y
   width: number;     // lebar kotak
   height: number;    // tinggi kotak
   confidence: number;
-  class: string;     // label dari model (misal: "plastic_bottle", "cardboard")
-}
-
-interface RoboflowResponse {
-  predictions: RoboflowPrediction[];
-  image: { width: number; height: number }; // dimensi gambar yang diproses Roboflow
+  class: string;
 }
 
 export interface BoundingBox {
@@ -32,7 +24,7 @@ export interface BoundingBox {
   height: number;
   confidence: number;
   className: string;
-  imageWidth: number;  // dimensi gambar yang diproses Roboflow (untuk scaling)
+  imageWidth: number;
   imageHeight: number;
 }
 
@@ -42,9 +34,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (!ROBOFLOW_API_KEY) {
-    console.error('[ROBOFLOW] API Key tidak dikonfigurasi di environment variables.');
-    // Kembalikan null bounding box agar pipeline tetap jalan (fallback ke Cloudflare full-image)
-    return res.status(200).json({ success: true, boundingBox: null, message: 'Roboflow API Key tidak dikonfigurasi, lanjut tanpa deteksi kotak.' });
+    console.error('[ROBOFLOW] API Key tidak dikonfigurasi.');
+    return res.status(200).json({ success: true, boundingBox: null, message: 'API Key tidak ada.' });
   }
 
   const { image } = req.body;
@@ -53,48 +44,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Roboflow menerima base64 langsung (tanpa prefix "data:image/jpeg;base64,")
     const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
 
-    console.log(`[ROBOFLOW] Mengirim gambar ke ${ROBOFLOW_PROJECT}/${ROBOFLOW_VERSION} untuk deteksi bounding box...`);
+    console.log(`[ROBOFLOW] Mengirim gambar ke Workflow Endpoint...`);
 
-    const response = await fetch(
-      `${ROBOFLOW_ENDPOINT}?api_key=${ROBOFLOW_API_KEY}&confidence=40&overlap=30`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: base64Data,
-      }
-    );
+    const response = await fetch(ROBOFLOW_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: ROBOFLOW_API_KEY,
+        inputs: {
+          image: { type: "base64", value: base64Data }
+        }
+      })
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`Roboflow API error ${response.status}: ${errorText}`);
     }
 
-    const data: RoboflowResponse = await response.json();
+    const data = await response.json();
+    
+    // Struktur respons Workflow: data.outputs[0].predictions.predictions
+    const workflowOutputs = data.outputs?.[0]?.predictions;
+    const predictions: RoboflowPrediction[] = workflowOutputs?.predictions || [];
+    
+    console.log(`[ROBOFLOW] Terdeteksi ${predictions.length} objek dari Workflow.`);
 
-    console.log(`[ROBOFLOW] Terdeteksi ${data.predictions?.length ?? 0} objek.`);
-
-    // Tidak ada prediksi → fallback ke Cloudflare dengan gambar penuh
-    if (!data.predictions || data.predictions.length === 0) {
+    if (predictions.length === 0) {
       return res.status(200).json({
         success: true,
         boundingBox: null,
-        message: 'Tidak ada objek terdeteksi oleh Roboflow, lanjut dengan gambar penuh.',
+        message: 'Tidak ada objek terdeteksi.',
       });
     }
 
-    // Pilih prediksi dengan confidence TERTINGGI sebagai target crop
-    const best = data.predictions.reduce((prev, curr) =>
+    // Pilih prediksi dengan confidence TERTINGGI
+    const best = predictions.reduce((prev, curr) =>
       curr.confidence > prev.confidence ? curr : prev
     );
 
-    // Roboflow mengembalikan koordinat CENTER-based.
-    // Konversi ke TOP-LEFT (format Canvas API) + tambahkan padding 8%
+    // Jika Roboflow Workflow mengembalikan image width null, asumsikan 640 (karena frontend ngirim segitu via canvas)
+    // Atau lebih baik kita kembalikan koordinat apa adanya (asli dari Workflow) 
+    // lalu biarkan frontend mengatur aspect ratio-nya.
     const PADDING_RATIO = 0.08;
-    const imgW = data.image.width;
-    const imgH = data.image.height;
+    const imgW = workflowOutputs?.image?.width || 640; 
+    const imgH = workflowOutputs?.image?.height || 640;
 
     const padX = best.width  * PADDING_RATIO;
     const padY = best.height * PADDING_RATIO;
@@ -110,17 +106,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       imageHeight: imgH,
     };
 
-    console.log(`[ROBOFLOW] ✅ Bounding Box terbaik: class="${best.class}", confidence=${boundingBox.confidence}%, box=${JSON.stringify({ x: Math.round(boundingBox.x), y: Math.round(boundingBox.y), w: Math.round(boundingBox.width), h: Math.round(boundingBox.height) })}`);
+    console.log(`[ROBOFLOW] ✅ Bounding Box terbaik: class="${best.class}", confidence=${boundingBox.confidence}%`);
 
     return res.status(200).json({ success: true, boundingBox });
 
   } catch (error: any) {
-    // Jika terjadi error (network, API down, dll) → fallback gracefully
     console.error(`[ROBOFLOW ERROR] ${error.message}`);
     return res.status(200).json({
       success: true,
       boundingBox: null,
-      message: `Roboflow error (fallback aktif): ${error.message}`,
+      message: `Roboflow error: ${error.message}`,
     });
   }
 }
+
