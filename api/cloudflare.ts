@@ -200,11 +200,11 @@ Valid categories: PLASTIK, KERTAS, ORGANIK, RESIDU, BUKAN_SAMPAH, GAMBAR_BURAM`;
         'person\'s hand', 'human hand', 'person is', 'people are',
         // Kendaraan (Bahasa Inggris)
         'a motorcycle', 'a car ', 'a bicycle', 'a vehicle',
-        // Elektronik aktif (bukan elektronik yang dibuang)
-        'a phone screen', 'a computer screen', 'a camera lens',
+        // Elektronik aktif (bukan elektronik yang dibuang) atau aksesoris
+        'a phone screen', 'a computer screen', 'a camera lens', 'earphone', 'headset', 'cable', 'wire', 'charger',
         // Bahasa Indonesia — hanya frasa yang jelas menunjuk objek UTAMA
         'foto orang', 'gambar orang', 'wajah seseorang', 'tangan seseorang',
-        'sebuah motor', 'sebuah mobil', 'sebuah sepeda motor'
+        'sebuah motor', 'sebuah mobil', 'sebuah sepeda motor', 'kabel', 'earphone', 'headset', 'casan'
       ];
       
       const hasForbiddenKeyword = nonWasteObservationKeywords.some(keyword => deskripsiLower.includes(keyword));
