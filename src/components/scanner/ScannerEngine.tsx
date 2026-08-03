@@ -466,24 +466,57 @@ export default function ScannerEngine(props: ScannerEngineProps) {
   return (
     <div className="flex flex-col h-full bg-black relative">
       {!stream && !error && (
-        <div className="flex-1 flex flex-col items-center justify-center text-white p-6 text-center z-10 bg-eco-bg text-eco-text">
-          <Camera className="w-20 h-20 mb-6 opacity-30 text-eco-green" />
-          <h2 className="text-2xl font-bold mb-2">Pemindai Sampah</h2>
-          <p className="text-eco-text-light mb-8 max-w-xs">Arahkan kamera ke sampah untuk mengetahui jenis dan cara membuangnya.</p>
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center z-10 overflow-y-auto"
+          style={{ background: 'linear-gradient(160deg, #f0fdf4 0%, #dcfce7 40%, #f8f9fa 100%)' }}
+        >
+          {/* Identity Badge */}
+          <div className="flex items-center gap-1.5 bg-white/80 backdrop-blur-sm border border-emerald-200 text-emerald-700 text-xs font-semibold px-3 py-1.5 rounded-full mb-5 shadow-sm">
+            <span>🌿</span>
+            <span>Desa Pasuruhan Kidul • Sistem Sampah Cerdas</span>
+          </div>
+
+          {/* Hero Icon with Glow */}
+          <div className="relative mb-5">
+            <div className="absolute inset-0 rounded-full bg-emerald-400/20 blur-2xl scale-150" />
+            <div className="relative w-24 h-24 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shadow-xl shadow-emerald-500/30">
+              <Camera className="w-11 h-11 text-white" />
+            </div>
+          </div>
+
+          {/* Title & Subtitle */}
+          <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 mb-2">Pemindai Sampah</h2>
+          <p className="text-slate-500 text-sm mb-6 max-w-xs leading-relaxed">
+            Arahkan kamera ke sampah. AI 2 tahap kami akan mendeteksi jenis, nilai ekonomi, dan panduan daur ulangnya secara instan.
+          </p>
+
+          {/* 3 Value Badges */}
+          <div className="flex flex-wrap gap-2 justify-center mb-7">
+            <span className="flex items-center gap-1.5 bg-white border border-emerald-200 text-slate-700 text-xs font-medium px-3 py-1.5 rounded-full shadow-sm">
+              <span>⚡</span> AI Vision 2-Stage
+            </span>
+            <span className="flex items-center gap-1.5 bg-white border border-emerald-200 text-slate-700 text-xs font-medium px-3 py-1.5 rounded-full shadow-sm">
+              <span>💰</span> Estimasi Nilai Ekonomi
+            </span>
+            <span className="flex items-center gap-1.5 bg-white border border-emerald-200 text-slate-700 text-xs font-medium px-3 py-1.5 rounded-full shadow-sm">
+              <span>♻️</span> Panduan Daur Ulang
+            </span>
+          </div>
+
+          {/* Primary CTA */}
           <button
             onClick={handleStartCameraClick}
-            className="bg-eco-green hover:bg-eco-green-dark text-white rounded-full py-4 px-8 font-bold text-lg transition-all active:scale-95 w-full max-w-xs shadow-lg shadow-eco-green/30"
+            className="w-full max-w-xs py-4 rounded-2xl font-bold text-lg text-white transition-all active:scale-95 mb-3 relative overflow-hidden"
+            style={{ background: 'linear-gradient(135deg, #10b981, #0d9488)', boxShadow: '0 8px 32px rgba(16,185,129,0.35)' }}
           >
-            Buka Kamera
+            <span className="relative z-10 flex items-center justify-center gap-2">
+              <Camera className="w-5 h-5" /> Buka Kamera
+            </span>
           </button>
-          <div className="mt-6 flex items-center gap-2">
-            <div className="h-px w-16 bg-gray-300"></div>
-            <span className="text-gray-500 text-sm">Atau</span>
-            <div className="h-px w-16 bg-gray-300"></div>
-          </div>
+
+          {/* Secondary: Gallery */}
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="mt-6 text-eco-green font-medium flex items-center gap-2 p-2 active:opacity-70"
+            className="w-full max-w-xs py-3.5 rounded-2xl font-semibold text-emerald-700 bg-white border-2 border-emerald-200 hover:border-emerald-400 flex items-center justify-center gap-2 transition-all active:scale-95"
           >
             <ImageIcon className="w-5 h-5" />
             Pilih dari Galeri
@@ -519,18 +552,32 @@ export default function ScannerEngine(props: ScannerEngineProps) {
           <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60 pointer-events-none" />
 
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-8">
-            <div className={`w-full aspect-square max-w-sm border-2 rounded-3xl relative flex flex-col justify-end pb-6 transition-colors duration-300 ${blurWarning ? 'border-eco-amber/80' : 'border-white/50'}`}>
-              <div className={`absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 rounded-tl-3xl transition-colors ${blurWarning ? 'border-eco-amber' : 'border-eco-green'}`} />
-              <div className={`absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 rounded-tr-3xl transition-colors ${blurWarning ? 'border-eco-amber' : 'border-eco-green'}`} />
-              <div className={`absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 rounded-bl-3xl transition-colors ${blurWarning ? 'border-eco-amber' : 'border-eco-green'}`} />
-              <div className={`absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 rounded-br-3xl transition-colors ${blurWarning ? 'border-eco-amber' : 'border-eco-green'}`} />
+            <div className={`w-full aspect-square max-w-sm rounded-3xl relative flex flex-col justify-end pb-6 transition-colors duration-300 overflow-hidden ${blurWarning ? 'border-2 border-eco-amber/80' : 'border-2 border-white/40'}`}>
+              {/* Corner brackets */}
+              <div className={`absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 rounded-tl-3xl transition-colors ${blurWarning ? 'border-eco-amber' : 'border-emerald-400'}`} />
+              <div className={`absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 rounded-tr-3xl transition-colors ${blurWarning ? 'border-eco-amber' : 'border-emerald-400'}`} />
+              <div className={`absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 rounded-bl-3xl transition-colors ${blurWarning ? 'border-eco-amber' : 'border-emerald-400'}`} />
+              <div className={`absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 rounded-br-3xl transition-colors ${blurWarning ? 'border-eco-amber' : 'border-emerald-400'}`} />
+
+              {/* Laser scan line animation */}
+              {!blurWarning && (
+                <div
+                  className="absolute left-0 right-0 h-0.5 pointer-events-none"
+                  style={{
+                    background: 'linear-gradient(90deg, transparent 0%, #10b981 30%, #34d399 50%, #10b981 70%, transparent 100%)',
+                    boxShadow: '0 0 8px 2px rgba(16,185,129,0.7)',
+                    animation: 'scanLaser 2s ease-in-out infinite'
+                  }}
+                />
+              )}
+
               {blurWarning ? (
                 <p className="text-eco-amber text-center bg-black/70 px-4 py-2 rounded-xl text-xs font-semibold mx-4 shadow-lg backdrop-blur-sm animate-pulse">
                   {blurWarning}
                 </p>
               ) : (
                 <p className="text-white text-center bg-black/60 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium mx-4 shadow-lg backdrop-blur-sm">
-                  Dekatkan kamera 30-50 cm.<br/>Pastikan <span className="text-eco-amber font-bold">HANYA SAMPAH</span> di dalam kotak.
+                  Dekatkan kamera 30-50 cm.<br/>Pastikan <span className="text-emerald-400 font-bold">HANYA SAMPAH</span> di dalam kotak.
                 </p>
               )}
             </div>
